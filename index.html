@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>そば屋台レジ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+/* Layout: 左=注文入力、右=提供キュー、作る数、提供済みの2分割。スケッチの配置どおり */
+:root{
+  --bg:#e9edf1; --panel:#f8fafb; --key:#ffffff; --line:#c3ccd6; --ink:#17212c; --muted:#59677a;
+  --accent:#23407a; --on-accent:#ffffff; --cash:#1f6b4f; --wesmo:#6a3d8f; --warn:#b42318; --hot:#fff0c2;
+  --font:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic UI","Noto Sans CJK JP",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10161d; --panel:#18212b; --key:#212c38; --line:#3a4858; --ink:#edf1f5; --muted:#a3b0bf;
+  --accent:#8fb0f2; --on-accent:#0e1a30; --cash:#62c79f; --wesmo:#c6a0e8; --warn:#ff9b8f; --hot:#4a3a10; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161d; --panel:#18212b; --key:#212c38; --line:#3a4858; --ink:#edf1f5; --muted:#a3b0bf;
+  --accent:#8fb0f2; --on-accent:#0e1a30; --cash:#62c79f; --wesmo:#c6a0e8; --warn:#ff9b8f; --hot:#4a3a10; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;font-variant-numeric:tabular-nums;
+  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));padding-block:12px;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+@media (min-width:761px){html,body{overflow:hidden}}
+@media (max-width:760px){body{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--key);border-radius:6px;min-height:48px}
+button:active{transform:translateY(1px)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.app{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;height:100%}
+.col{min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px}
+.right{overflow:hidden}
+.qwrap,.pastwrap{flex:5 1 0;min-height:0;display:flex;flex-direction:column}
+.lst{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);padding:1px;background:var(--line);border:0}
+.lst tbody{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(5,minmax(26px,1fr));gap:1px;min-height:0;min-width:0}
+.lst tr{display:grid;grid-template-columns:4.2em minmax(0,1fr) 4em;gap:1px;min-height:0;min-width:0}
+table.lst td{display:flex;align-items:center;border:0;height:auto;min-height:0;min-width:0;width:auto;padding:0 8px;background:var(--panel);font-size:clamp(12px,2.2vh,16px)}
+table.lst td.nm{font-size:clamp(13px,2.5vh,18px);font-weight:700}
+table.past.lst td.nm{font-weight:400}
+table.lst td.empty{justify-content:center}
+table.lst td.a{padding:2px}
+table.lst td.a button{flex:1;width:auto;min-height:0;padding:0;font-size:clamp(12px,2.2vh,16px)}
+.row{display:grid;gap:8px}
+.top{grid-template-columns:1fr}
+.top button{font-size:20px;font-weight:700}
+.items{grid-template-columns:repeat(3,minmax(0,1fr));flex:1 1 0;min-height:0;grid-auto-rows:minmax(64px,1fr)}
+.extras{grid-template-columns:repeat(4,minmax(0,1fr))}
+/* メニューのキー: マイナス部分以外はどこを押しても+1 */
+.key{position:relative;display:flex;min-width:0}
+.key .plus{flex:1;width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 10px;min-width:0;text-align:left}
+.key .n{font-size:18px;font-weight:700;overflow-wrap:anywhere}
+.key .c{font-size:26px;font-weight:700;min-width:1.4em;text-align:right;color:var(--muted)}
+.key.on .plus{background:var(--hot);border-color:var(--accent);padding-left:calc(min(30%,64px) + 10px)}
+.key.on .c{color:var(--ink)}
+.key .minus{position:absolute;left:0;top:0;bottom:0;width:min(30%,64px);min-height:0;padding:0;border-color:var(--accent);border-radius:6px 0 0 6px;background:var(--panel);color:var(--warn);font-size:28px;font-weight:700;line-height:1}
+.extras .key .c{font-size:20px}
+.sum{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch}
+.total{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 14px;font-size:44px;font-weight:700;min-width:0}
+.total span{margin-left:auto;overflow-wrap:anywhere}
+.cart{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:0 12px;font-size:28px;font-weight:700;min-width:96px}
+.cart svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2}
+.pay{grid-template-columns:1fr 1fr}
+.pay button{min-height:84px;font-size:30px;font-weight:700;border:0;color:var(--panel)}
+#cash{background:var(--cash)} #wesmo{background:var(--wesmo)}
+.pay button:disabled{opacity:.4;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+td,th{border:1px solid var(--line);padding:4px 8px;height:48px}
+td.no{width:5.5em;font-weight:700;white-space:nowrap}
+td.nm{font-size:18px;font-weight:700;overflow-wrap:anywhere}
+td.a{width:5.6em;padding:3px}
+td.a button{width:100%;min-height:42px;font-weight:700}
+.done-btn{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:700;color:var(--muted);font-size:14px}
+.tally th{height:22px;font-size:13px;font-weight:400;color:var(--muted);text-align:center;padding:1px}
+.tally td{text-align:center;font-size:clamp(18px,3.6vh,28px);font-weight:700;padding:1px;height:clamp(28px,5vh,40px)}
+.tally{table-layout:fixed}
+.past{font-size:15px}
+.past td{height:42px}
+.past td.nm{font-size:15px;font-weight:400}
+#clear.cancelmode{color:var(--warn);border-color:var(--warn)}
+#clear.arm{background:var(--warn);border-color:var(--warn);color:var(--panel)}
+#clear:disabled{opacity:.5;cursor:not-allowed}
+.empty{color:var(--muted);text-align:center;font-weight:400;font-size:15px}
+.foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.foot button{min-width:72px;font-weight:700;font-size:16px;color:var(--ink)}
+.foot.bad{color:var(--warn);font-weight:700}
+.fst{display:flex;flex-direction:column;min-width:0;margin-right:auto}
+#bkst.due{color:var(--warn);font-weight:700}
+#bk{padding:0 12px}
+#bk.due{background:var(--hot);border-color:var(--warn)}
+.filebtn{display:inline-flex;align-items:center;min-height:48px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:var(--key);cursor:pointer}
+.scroll{overflow-x:auto}
+#notice{display:flex;align-items:baseline;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 12px;font-size:14px;font-weight:700;color:var(--muted)}
+#notice b{font-size:24px;color:var(--ink)}
+#settings{position:fixed;inset:0;z-index:20;background:var(--bg);overflow:auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.sheet{max-width:860px;margin:auto;display:flex;flex-direction:column;gap:18px}
+.sheet h2{font-size:18px;margin:0 0 8px}
+.sheet h1{font-size:22px;margin:0}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bar button{min-width:96px;font-weight:700}
+.sheet input[type=number],.sheet input[type=text]{width:100%;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--key);padding:0 8px;min-width:80px}
+.sheet input[type=checkbox]{width:24px;height:24px}
+.sheet td,.sheet th{height:auto;padding:6px}
+.sheet th{font-weight:400;color:var(--muted);font-size:14px;text-align:left}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stats div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+.stats b{display:block;font-size:22px;overflow-wrap:anywhere}
+.stats span{font-size:13px;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btns button{padding:0 14px}
+textarea{width:100%;height:130px;border:1px solid var(--line);border-radius:6px;background:var(--key);padding:8px;font-size:14px}
+.danger{color:var(--warn);border-color:var(--warn)}
+.edit{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:8px}
+.edit label{display:flex;flex-direction:column;gap:2px;font-size:13px;min-width:0}
+.edit select{width:100%;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--key);padding:0 8px}
+.hint{color:var(--muted);font-size:14px;margin:6px 0 0}
+@media (max-width:760px){
+  html,body{height:auto}
+  .app{grid-template-columns:minmax(0,1fr);height:auto}
+  .right{overflow:visible}
+  .qwrap,.pastwrap{flex:none}
+  .lst tbody{grid-template-rows:repeat(5,44px)}
+  .items{flex:none}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .total{font-size:36px}
+}
+@media (prefers-reduced-motion:reduce){button:active{transform:none}}
+</style>
+
+<main class="app">
+  <section class="col" aria-label="注文入力">
+    <div class="row top">
+      <button id="clear">クリア</button>
+    </div>
+    <div class="row items" id="items"></div>
+    <div class="row extras" id="extras"></div>
+    <div class="sum">
+      <div class="total" aria-label="合計金額">¥<span id="total">0</span></div>
+      <div class="cart" aria-label="次の注文番号"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h3l3 11h10l3-8H6"/><circle cx="9.5" cy="19.5" r="1.7"/><circle cx="17" cy="19.5" r="1.7"/></svg><span id="count">0</span></div>
+    </div>
+    <div class="row pay">
+      <button id="cash" data-pay="現金">現金</button>
+      <button id="wesmo" data-pay="Wesmo">Wesmo</button>
+    </div>
+  </section>
+
+  <section class="col right" aria-label="提供状況">
+    <div id="notice" hidden></div>
+    <div class="h"><span>提供待ち</span><span id="waiting"></span></div>
+    <div class="qwrap"><table class="lst"><tbody id="queue"></tbody></table></div>
+    <div class="h"><span>作る数</span></div>
+    <div><table class="tally"><thead><tr id="tallyH"></tr></thead><tbody><tr id="tallyB"></tr></tbody></table></div>
+    <div class="h"><span>提供済み(最新5件)</span></div>
+    <div class="pastwrap"><table class="past lst"><tbody id="past"></tbody></table></div>
+    <div class="foot" id="foot"><div class="fst"><span id="saved">保存先: この端末</span><span id="bkst"></span></div><button id="bk">バックアップ</button><button id="open">設定</button></div>
+  </section>
+</main>
+
+<section id="settings" hidden aria-label="設定">
+  <div class="sheet">
+    <div class="bar"><h1>設定と売上</h1><button id="close">閉じる</button></div>
+    <div>
+      <h2>売上</h2>
+      <div class="stats" id="stats"></div>
+      <div class="scroll" style="margin-top:8px"><table><tbody id="soldItems"></tbody></table></div>
+    </div>
+    <div>
+      <h2>メニュー</h2>
+      <div class="scroll"><table><thead><tr><th>名前</th><th>価格(円)</th></tr></thead><tbody id="menu"></tbody></table></div>
+      <p class="hint">A〜Dは100円引きの割引券で、入手経路の区別に使います。提供待ちには出ません。「全部」は全部乗せで、きつね、ハイカラ、からあげ、たこやきを1つずつ数えます。</p>
+    </div>
+    <div>
+      <h2>注文履歴</h2>
+      <div class="scroll"><table><tbody id="orders"></tbody></table></div>
+    </div>
+    <div>
+      <h2>取消の記録</h2>
+      <div class="scroll"><table><tbody id="cancels"></tbody></table></div>
+    </div>
+    <div>
+      <h2>修正の記録</h2>
+      <div class="scroll"><table><tbody id="edits"></tbody></table></div>
+    </div>
+    <div>
+      <h2>バックアップ</h2>
+      <div class="btns">
+        <button id="csv">売上CSVを表示</button>
+        <button id="csvc">取消記録CSVを表示</button>
+        <button id="csve">修正記録CSVを表示</button>
+        <button id="json">バックアップを表示</button>
+        <button id="copy">表示中の内容をコピー</button>
+        <button id="restore">貼り付けた内容から復元</button>
+        <label class="filebtn">ファイルから復元<input type="file" id="rfile" accept=".json,application/json" hidden></label>
+      </div>
+      <textarea id="io" aria-label="バックアップ内容" placeholder="ここにCSVやバックアップが表示されます。復元するときは、バックアップの内容をここに貼り付けます。"></textarea>
+      <p class="hint" id="ioMsg">端末の故障に備えて、休憩時や営業終了時にコピーしてメモなどに保存してください。</p>
+    </div>
+    <div>
+      <h2>データ消去</h2>
+      <button id="wipe" class="danger" style="padding:0 14px">売上と注文をすべて消去</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+'use strict';
+var KEY='soba-register-v1', TOPS=['ハイカラ','きつね','からあげ','たこやき'], STOCK_KEYS=['そば計'].concat(TOPS);
+function initial(){return{rev:0,nextNo:1,
+  menu:[
+    {id:'kake',name:'かけ',price:300,soba:true,tops:[]},
+    {id:'kitsune',name:'きつね',price:400,soba:true,tops:['きつね']},
+    {id:'haikara',name:'ハイカラ',price:350,soba:true,tops:['ハイカラ']},
+    {id:'karaage',name:'からあげ',price:250,soba:true,tops:['からあげ']},
+    {id:'takoyaki',name:'たこやき',price:300,soba:true,tops:['たこやき']},
+    {id:'zenbu',name:'全部',price:700,soba:true,tops:TOPS.slice()}],
+  extras:[{id:'a',name:'A',price:100},{id:'b',name:'B',price:100},{id:'c',name:'C',price:100},{id:'d',name:'D',price:100}],
+  priced:false,stock:{'そば計':100,'ハイカラ':50,'きつね':50,'からあげ':50,'たこやき':50},
+  cart:{},orders:[],lines:[],cancels:[],edits:[]};}
+var S=initial(), db=null, wipeTimer=null, voidArm=null, cancelArm=null, cancelTimer=null, clearArm=null, clearTimer=null, flashTimer=null, editNo=null;
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function yen(n){return Number(n||0).toLocaleString('ja-JP')}
+function all(){return S.menu.concat(S.extras)}
+
+/* 保存: localStorage と IndexedDB の両方へ書く */
+function setStatus(ok,msg){$('foot').classList.toggle('bad',!ok);$('saved').textContent=msg}
+function save(){
+  S.rev++;var json=JSON.stringify(S),ok=false;
+  try{localStorage.setItem(KEY,json);ok=true}catch(e){}
+  if(db){try{var t=db.transaction('kv','readwrite');t.objectStore('kv').put(json,KEY);ok=true}catch(e){}}
+  setStatus(ok,ok?'保存先: この端末':'保存できません。バックアップを取ってください');
+}
+function migrate(o){
+  if(o.menu.concat(o.extras).every(function(m){return !m.price})){
+    var d=initial(),p={};d.menu.concat(d.extras).forEach(function(m){p[m.id]=m.price});
+    o.menu.concat(o.extras).forEach(function(m){m.price=p[m.id]||0});
+  }
+  if(!Array.isArray(o.cancels))o.cancels=[];
+  if(!Array.isArray(o.edits))o.edits=[];
+  delete o.kanpa;o.orders.forEach(function(x){delete x.kanpa});
+  o.extras.forEach(function(m){m.price=100});
+  o.menu.forEach(function(m){m.soba=true});
+  var ds=initial().stock;
+  if(!o.stock||typeof o.stock!=='object')o.stock={};
+  STOCK_KEYS.forEach(function(k){if(typeof o.stock[k]!=='number')o.stock[k]=ds[k]});
+  return o;
+}
+function valid(o){return o&&Array.isArray(o.orders)&&Array.isArray(o.lines)&&Array.isArray(o.menu)&&Array.isArray(o.extras)&&typeof o.nextNo==='number'}
+function loadLocal(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(valid(o))S=migrate(o)}}catch(e){}}
+function openDb(){
+  if(!window.indexedDB)return;
+  try{
+    var q=indexedDB.open('soba-register',1);
+    q.onupgradeneeded=function(){q.result.createObjectStore('kv')};
+    q.onsuccess=function(){
+      db=q.result;
+      var g=db.transaction('kv').objectStore('kv').get(KEY);
+      g.onsuccess=function(){
+        var o=null;try{o=g.result?JSON.parse(g.result):null}catch(e){}
+        if(valid(o)&&o.rev>S.rev){S=migrate(o);try{localStorage.setItem(KEY,g.result)}catch(e){}render()}
+        else if(S.rev>0){db.transaction('kv','readwrite').objectStore('kv').put(JSON.stringify(S),KEY)}
+      };
+    };
+  }catch(e){}
+}
+
+/* 計算 */
+function totals(){
+  var sub=0,n=0,mn=0;
+  S.menu.forEach(function(m){var c=S.cart[m.id]||0;sub+=c*m.price;n+=c;mn+=c});
+  S.extras.forEach(function(m){var c=S.cart[m.id]||0;sub-=c*m.price;n+=c});
+  return{sub:sub,n:n,menuN:mn,total:Math.max(0,sub)};
+}
+function lprice(l){
+  if(typeof l.price==='number')return l.price;
+  var m=S.menu.filter(function(x){return x.id===l.item})[0];return m?m.price:0;
+}
+function cancelInfo(no){
+  var n=0,y=0;S.lines.forEach(function(l){if(l.cancel&&l.no===no){n++;y+=lprice(l)}});
+  return{n:n,y:y};
+}
+function isMenu(id){return S.menu.some(function(m){return m.id===id})}
+/* 最後の1品まで取り消した注文は、割引券も含めて全部なかったことにする */
+function allCancelled(o){
+  return o.items.some(function(i){return isMenu(i.id)})&&!S.lines.some(function(l){return l.no===o.no&&!l.cancel});
+}
+function net(o){return allCancelled(o)?0:Math.max(0,o.total-cancelInfo(o.no).y)}
+/* 取消の記録 */
+function logCancel(e){e.at=new Date().toISOString();S.cancels.push(e)}
+function lastCancellable(){
+  for(var i=S.orders.length-1;i>=0;i--){
+    var o=S.orders[i];if(o.voided)continue;
+    var rem=S.lines.some(function(l){return l.no===o.no&&!l.cancel});
+    if(rem||net(o)>0)return o;
+  }
+  return null;
+}
+function voidOrder(no){
+  var o=S.orders.filter(function(x){return x.no===no})[0];if(!o||o.voided)return;
+  logCancel({no:no,kind:'注文全体',name:o.items.map(function(i){return i.name+'×'+i.qty}).join(' ')||'品なし',amount:net(o)});
+  o.voided=true;
+  S.lines=S.lines.filter(function(l){return l.no!==no});
+}
+/* 注文の修正。修正前後の内容を S.edits に残す */
+function orderById(no){return S.orders.filter(function(x){return x.no===no})[0]}
+function effQty(o,id){
+  if(allCancelled(o))return 0;
+  var it=o.items.filter(function(i){return i.id===id})[0],q=it?it.qty:0;
+  S.lines.forEach(function(l){if(l.no===o.no&&l.item===id&&l.cancel)q--});
+  return Math.max(0,q);
+}
+function origQty(o,id){var it=o.items.filter(function(i){return i.id===id})[0];return it?it.qty:0}
+function orderText(o){
+  var t=[];o.items.forEach(function(i){var q=effQty(o,i.id);if(q)t.push(i.name+'×'+q)});
+  return (t.join(' ')||'品なし')+' / 合計¥'+yen(net(o))+' / '+o.pay;
+}
+function editCount(no){return S.edits.filter(function(e){return e.no===no}).length}
+function saveEdit(no){
+  var o=orderById(no);if(!o||o.voided)return;
+  var items=[],sub=0,mn=0,before=orderText(o);
+  all().forEach(function(m,i){
+    var q=Math.max(0,Math.floor(Number($('e-'+m.id).value)||0));if(!q)return;
+    var old=o.items.filter(function(x){return x.id===m.id})[0];
+    var it={id:m.id,name:old?old.name:m.name,price:old?old.price:m.price,qty:q};
+    items.push(it);
+    if(i<S.menu.length){sub+=q*it.price;mn+=q}else sub-=q*it.price;
+  });
+  var pay=$('e-pay').value;
+  if(!mn){$('eMsg').textContent='メニューが必要です。注文をなくす場合は「取消」を使ってください。';return}
+  var mine=S.lines.filter(function(l){return l.no===no&&!l.cancel}),maxSub=0,keep=[];
+  S.lines.forEach(function(l){if(l.no===no&&l.sub>maxSub)maxSub=l.sub});
+  S.menu.forEach(function(m){
+    var it=items.filter(function(x){return x.id===m.id})[0],q=it?it.qty:0;
+    var cur=mine.filter(function(l){return l.item===m.id}).sort(function(a,b){return (b.done?1:0)-(a.done?1:0)||a.sub-b.sub});
+    keep=keep.concat(cur.slice(0,q));
+    for(var n=cur.length;n<q;n++){maxSub++;keep.push({no:no,sub:maxSub,item:m.id,name:it.name,price:it.price,done:false})}
+  });
+  S.lines=S.lines.filter(function(l){return l.no!==no}).concat(keep);
+  o.items=items;delete o.kanpa;o.pay=pay;o.total=Math.max(0,sub);
+  var after=orderText(o);
+  if(after!==before)S.edits.push({at:new Date().toISOString(),no:no,before:before,after:after});
+  editNo=null;save();render();
+}
+function editRow(o){
+  var h=all().map(function(m){
+    return '<label>'+esc(m.name)+'<input type="number" min="0" inputmode="numeric" id="e-'+m.id+'" value="'+origQty(o,m.id)+'"></label>'}).join('');
+  h+='<label>支払い<select id="e-pay">'+['現金','Wesmo'].map(function(p){return '<option'+(o.pay===p?' selected':'')+'>'+p+'</option>'}).join('')+'</select></label>';
+  return '<tr><td colspan="4"><div class="edit">'+h+'</div><p class="hint" id="eMsg"></p><div class="btns"><button data-esave="'+o.no+'">修正を保存</button><button data-eclose="1">やめる</button></div></td></tr>';
+}
+function flash(m){
+  setStatus(true,m);clearTimeout(flashTimer);
+  flashTimer=setTimeout(function(){setStatus(true,'保存先: この端末')},3500);
+}
+/* 材料の使用数。取消した行は数えない */
+function usage(pick){
+  var t={'そば計':0};TOPS.forEach(function(k){t[k]=0});
+  S.lines.forEach(function(l){
+    if(l.cancel||!pick(l))return;
+    var m=S.menu.filter(function(x){return x.id===l.item})[0];if(!m)return;
+    if(m.soba)t['そば計']++;
+    m.tops.forEach(function(k){t[k]++});
+  });
+  return t;
+}
+function tally(){return usage(function(l){return !l.done})}
+function pay(method){
+  var c=totals();if(!c.menuN)return;
+  var no=S.nextNo++,items=[],sub=0;
+  all().forEach(function(m){
+    var q=S.cart[m.id]||0;if(!q)return;
+    items.push({id:m.id,name:m.name,price:m.price,qty:q});
+  });
+  S.orders.push({no:no,at:new Date().toISOString(),items:items,total:c.total,pay:method,voided:false});
+  S.menu.forEach(function(m){
+    var q=S.cart[m.id]||0;
+    for(var i=0;i<q;i++){sub++;S.lines.push({no:no,sub:sub,item:m.id,name:m.name,price:m.price,done:false})}
+  });
+  S.cart={};save();render();
+}
+
+/* 描画 */
+function keyHtml(m){var c=S.cart[m.id]||0,id=esc(m.id),nm=esc(m.name);
+  return '<div class="key'+(c?' on':'')+'"><button class="plus" data-item="'+id+'" aria-label="'+nm+'を1つ追加"><span class="n">'+nm+'</span><span class="c">'+c+'</span></button>'+
+    (c?'<button class="minus" data-minus="'+id+'" aria-label="'+nm+'を1つ減らす">−</button>':'')+'</div>'}
+function render(){
+  $('items').innerHTML=S.menu.map(keyHtml).join('');
+  $('extras').innerHTML=S.extras.map(keyHtml).join('');
+  var c=totals();$('total').textContent=yen(c.total);$('count').textContent=S.nextNo;
+  $('cash').disabled=$('wesmo').disabled=!c.menuN;
+  var empty=!c.n,lc=empty?lastCancellable():null,cb=$('clear'),armed=!!(lc&&clearArm===lc.no);
+  cb.textContent=armed?'注文'+lc.no+'を取消':empty?'キャンセル':'クリア';
+  cb.disabled=empty&&!lc;
+  cb.classList.toggle('cancelmode',!!lc);
+  cb.classList.toggle('arm',armed);
+  var wait=S.lines.filter(function(l){return !l.done&&!l.cancel}).sort(function(a,b){return a.no-b.no||a.sub-b.sub});
+  $('waiting').textContent='全'+wait.length+'件'+(wait.length>5?'(古い順に5件を表示)':'');
+  var qrow=[];
+  for(var qi=0;qi<5;qi++){
+    var wl=wait[qi];
+    if(wl){
+      var key=wl.no+'-'+wl.sub;
+      qrow.push('<tr><td class="no">'+key+'</td><td class="nm">'+esc(wl.name)+'</td>'+
+        '<td class="a"><button class="done-btn" data-done="'+key+'">済</button></td></tr>');
+    }else{
+      qrow.push('<tr><td class="no"></td><td class="nm empty">'+(qi===0?'支払いが済むと、ここに注文が並びます':'')+'</td><td class="a"></td></tr>');
+    }
+  }
+  $('queue').innerHTML=qrow.join('');
+  var t=tally(),k=Object.keys(t);
+  $('tallyH').innerHTML=k.map(function(x){return '<th scope="col">'+x+'</th>'}).join('');
+  $('tallyB').innerHTML=k.map(function(x){return '<td>'+t[x]+'</td>'}).join('');
+  var don=S.lines.filter(function(l){return l.done&&!l.cancel}).sort(function(a,b){return (b.doneAt||0)-(a.doneAt||0)||b.no-a.no||b.sub-a.sub}).slice(0,5),prow=[];
+  for(var i=0;i<5;i++){
+    var l=don[i];
+    prow.push(l?'<tr><td class="no">'+l.no+'-'+l.sub+'</td><td class="nm">'+esc(l.name)+'</td><td class="a"><button data-restore="'+l.no+'-'+l.sub+'">復元</button></td></tr>'
+      :'<tr><td class="no"></td><td class="nm empty">'+(i===0&&!don.length?'提供済みの注文はまだありません':'')+'</td><td class="a"></td></tr>');
+  }
+  $('past').innerHTML=prow.join('');
+  $('notice').hidden=false;
+  $('notice').innerHTML='そば販売数<b>'+usage(function(){return true})['そば計']+'</b>杯';
+  updBk();
+  if(!$('settings').hidden)renderStats();
+}
+function renderStats(){
+  var live=S.orders.filter(function(o){return !o.voided}),sum=function(f){return live.reduce(function(a,o){return a+f(o)},0)};
+  var box=[['売上合計','¥'+yen(sum(function(o){return net(o)}))],
+    ['現金','¥'+yen(sum(function(o){return o.pay==='現金'?net(o):0}))],
+    ['Wesmo','¥'+yen(sum(function(o){return o.pay==='Wesmo'?net(o):0}))]];
+  $('stats').innerHTML=box.map(function(b){return '<div><span>'+b[0]+'</span><b>'+b[1]+'</b></div>'}).join('');
+  var cnt={};live.forEach(function(o){o.items.forEach(function(i){cnt[i.name]=(cnt[i.name]||0)+effQty(o,i.id)})});
+  var names=Object.keys(cnt);
+  $('soldItems').innerHTML=names.length?names.map(function(n){return '<tr><td>'+esc(n)+'</td><td style="text-align:right">'+cnt[n]+'</td></tr>'}).join(''):'<tr><td class="empty">まだ売上はありません</td></tr>';
+  var recent=S.orders.slice().reverse();
+  $('orders').innerHTML=recent.length?recent.map(function(o){
+    var what=o.items.map(function(i){return esc(i.name)+'×'+i.qty}).join('、')||'品なし';
+    return '<tr><td class="no">'+o.no+'</td><td>'+what+'<br><small>¥'+yen(net(o))+' / '+esc(o.pay)+(cancelInfo(o.no).n?' / '+cancelInfo(o.no).n+'件取消':'')+(editCount(o.no)?' / '+editCount(o.no)+'回修正':'')+'</small></td><td class="a">'+
+      (o.voided?'':'<button data-edit="'+o.no+'">修正</button>')+'</td><td class="a">'+
+      (o.voided?'<span class="empty">取消済</span>':'<button class="danger" data-void="'+o.no+'">'+(voidArm===o.no?'確定':'取消')+'</button>')+'</td></tr>'+(editNo===o.no&&!o.voided?editRow(o):'')}).join('')
+    :'<tr><td class="empty">まだ注文はありません</td></tr>';
+  var cl=S.cancels.slice().reverse();
+  $('cancels').innerHTML=cl.length?cl.map(function(e){
+    var tm=new Date(e.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+    return '<tr><td class="no">'+e.no+(e.sub?'-'+e.sub:'')+'</td><td>'+esc(e.name)+'<br><small>'+tm+' / '+esc(e.kind)+'</small></td><td style="text-align:right;white-space:nowrap">¥'+yen(e.amount)+'</td></tr>'}).join('')
+    :'<tr><td class="empty">取り消した注文はありません</td></tr>';
+  var el=S.edits.slice().reverse();
+  $('edits').innerHTML=el.length?el.map(function(e){
+    var tm=new Date(e.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+    return '<tr><td class="no">'+e.no+'</td><td><small>'+tm+'</small><br>前: '+esc(e.before)+'<br>後: '+esc(e.after)+'</td></tr>'}).join('')
+    :'<tr><td class="empty">修正した注文はありません</td></tr>';
+}
+function renderMenu(){
+  $('menu').innerHTML=all().map(function(m,i){
+    var isX=i>=S.menu.length;
+    return '<tr><td><input type="text" id="n-'+m.id+'" data-f="name" data-id="'+m.id+'" value="'+esc(m.name)+'" aria-label="名前"></td>'+
+      '<td>'+(isX?'':'<input type="number" min="0" inputmode="numeric" id="p-'+m.id+'" data-f="price" data-id="'+m.id+'" value="'+m.price+'" aria-label="'+esc(m.name)+'の価格">')+'</td>'+
+      '</tr>'}).join('');
+}
+
+/* 操作 */
+document.addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  if(!b.dataset.cancel&&cancelArm){cancelArm=null;clearTimeout(cancelTimer)}
+  if(b.id!=='clear'&&clearArm){clearArm=null;clearTimeout(clearTimer)}
+  if(b.dataset.item){
+    var id=b.dataset.item,c=S.cart[id]||0;
+    S.cart[id]=c+1;
+    save();render();
+  }else if(b.dataset.minus){
+    var mid=b.dataset.minus,mc=S.cart[mid]||0;
+    if(mc>1)S.cart[mid]=mc-1;else delete S.cart[mid];
+    save();render();
+  }else if(b.dataset.pay){pay(b.dataset.pay)}
+  else if(b.dataset.done||b.dataset.restore){
+    var key=b.dataset.done||b.dataset.restore,on=!!b.dataset.done;
+    S.lines.forEach(function(l){if(l.no+'-'+l.sub===key){l.done=on;if(on)l.doneAt=Date.now();else delete l.doneAt}});
+    save();render();
+  }else if(b.dataset.cancel){
+    var ck=b.dataset.cancel;
+    clearTimeout(cancelTimer);
+    if(cancelArm!==ck){cancelArm=ck;cancelTimer=setTimeout(function(){cancelArm=null;render()},3000);render();return}
+    cancelArm=null;
+    S.lines.forEach(function(l){
+      if(l.no+'-'+l.sub!==ck||l.cancel)return;
+      var o=orderById(l.no),before=o?net(o):lprice(l);
+      l.cancel=true;
+      var nm=l.name;
+      if(o&&allCancelled(o)){
+        var cp=o.items.filter(function(i){return !isMenu(i.id)}).map(function(i){return i.name+'×'+i.qty}).join(' ');
+        if(cp)nm+='（割引券 '+cp+' も取消）';
+      }
+      logCancel({no:l.no,sub:l.sub,kind:'1品',name:nm,amount:before-(o?net(o):0)});
+    });
+    save();render();
+  }else if(b.dataset.edit){
+    editNo=Number(b.dataset.edit);renderStats();
+  }else if(b.dataset.eclose){
+    editNo=null;renderStats();
+  }else if(b.dataset.esave){
+    saveEdit(Number(b.dataset.esave));
+  }else if(b.dataset.void){
+    var no=Number(b.dataset.void);
+    if(voidArm!==no){voidArm=no;renderStats();return}
+    voidArm=null;voidOrder(no);
+    save();render();
+  }
+});
+$('clear').onclick=function(){
+  if(!totals().n){
+    var o=lastCancellable();if(!o)return;
+    clearTimeout(clearTimer);
+    if(clearArm!==o.no){clearArm=o.no;clearTimer=setTimeout(function(){clearArm=null;render()},3000);render();return}
+    clearArm=null;voidOrder(o.no);save();flash('注文'+o.no+'を取り消しました');render();return;
+  }
+  S.cart={};save();render();
+};
+$('open').onclick=function(){renderMenu();$('settings').hidden=false;renderStats()};
+$('close').onclick=function(){$('settings').hidden=true;voidArm=null;editNo=null;render()};
+$('menu').addEventListener('change',function(e){
+  var t=e.target,m=all().filter(function(x){return x.id===t.dataset.id})[0];if(!m)return;
+  if(t.dataset.f==='name'){if(t.value.trim())m.name=t.value.trim();else t.value=m.name}
+  if(t.dataset.f==='price'){m.price=Math.max(0,Math.floor(Number(t.value)||0));t.value=m.price;S.priced=true}
+  save();render();
+});
+function msg(s){$('ioMsg').textContent=s}
+$('csv').onclick=function(){
+  var q=function(v){return '"'+String(v).replace(/"/g,'""')+'"'};
+  var rows=[['注文番号','日時','内容','合計(取消後)','取消件数','修正回数','支払い','状態'].map(q).join(',')];
+  S.orders.forEach(function(o){rows.push([o.no,new Date(o.at).toLocaleString('ja-JP'),o.items.map(function(i){return i.name+'×'+i.qty}).join(' '),net(o),cancelInfo(o.no).n,editCount(o.no),o.pay,o.voided?'取消':'有効'].map(q).join(','))});
+  $('io').value=rows.join('\n');msg('売上CSVを表示しました。');
+};
+$('csvc').onclick=function(){
+  var q=function(v){return '"'+String(v).replace(/"/g,'""')+'"'};
+  var rows=[['日時','注文番号','種別','内容','金額'].map(q).join(',')];
+  S.cancels.forEach(function(e){rows.push([new Date(e.at).toLocaleString('ja-JP'),e.no+(e.sub?'-'+e.sub:''),e.kind,e.name,e.amount].map(q).join(','))});
+  $('io').value=rows.join('\n');msg('取消記録CSVを表示しました。');
+};
+$('csve').onclick=function(){
+  var q=function(v){return '"'+String(v).replace(/"/g,'""')+'"'};
+  var rows=[['日時','注文番号','修正前','修正後'].map(q).join(',')];
+  S.edits.forEach(function(e){rows.push([new Date(e.at).toLocaleString('ja-JP'),e.no,e.before,e.after].map(q).join(','))});
+  $('io').value=rows.join('\n');msg('修正記録CSVを表示しました。');
+};
+$('json').onclick=function(){$('io').value=JSON.stringify(S);msg('バックアップを表示しました。コピーして保存してください。')};
+$('copy').onclick=function(){
+  var v=$('io').value;if(!v){msg('先に売上CSVかバックアップを表示してください。');return}
+  function fb(){$('io').focus();$('io').select();msg('コピーできませんでした。選択された内容を手動でコピーしてください。')}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(function(){msg('コピーしました。')},fb);else fb();
+};
+$('restore').onclick=function(){
+  var o=null;try{o=JSON.parse($('io').value)}catch(e){}
+  if(!valid(o)){msg('復元できませんでした。「バックアップを表示」で出した内容を貼り付けてください。');return}
+  o.rev=S.rev;S=migrate(o);save();renderMenu();render();msg('復元しました。');
+};
+$('wipe').onclick=function(){
+  var b=this;
+  if(!wipeTimer){b.textContent='もう一度押すと消去します';wipeTimer=setTimeout(function(){wipeTimer=null;b.textContent='売上と注文をすべて消去'},4000);return}
+  clearTimeout(wipeTimer);wipeTimer=null;b.textContent='売上と注文をすべて消去';
+  var m=S.menu,x=S.extras,r=S.rev,st=S.stock,pr=S.priced;S=initial();S.menu=m;S.extras=x;S.rev=r;S.stock=st;S.priced=pr;save();render();
+};
+
+/* バックアップ: ファイル版は5分ごとに変更があれば自動でダウンロード。
+   公開ページは保存のたびに確認が出るため、5分たったらボタンで知らせる */
+var BK=KEY+'-backup',bk={rev:-1,at:0},dl=null,inViewer=!!(window.claude&&window.claude.use);
+try{var bkr=JSON.parse(localStorage.getItem(BK)||'null');if(bkr&&typeof bkr.at==='number')bk=bkr}catch(e){}
+function hm(t){return new Date(t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
+function backupDue(){return S.orders.length>0&&S.rev!==bk.rev&&Date.now()-bk.at>=5*60*1000}
+function updBk(){
+  var due=backupDue();
+  $('bk').hidden=inViewer&&!dl;
+  $('bk').classList.toggle('due',due);
+  $('bkst').classList.toggle('due',due&&inViewer);
+  $('bkst').textContent=(bk.at?'最終バックアップ '+hm(bk.at):'バックアップ未実施')+(due&&inViewer&&dl?'。「バックアップ」を押してください':'');
+}
+function backupName(){
+  var d=new Date(),p=function(n){return String(n).padStart(2,'0')};
+  return 'soba-backup-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.json';
+}
+function backupDone(){bk={rev:S.rev,at:Date.now()};try{localStorage.setItem(BK,JSON.stringify(bk))}catch(e){}updBk()}
+function doBackup(manual){
+  var data=JSON.stringify(S),name=backupName();
+  if(dl){
+    dl.save({filename:name,data:data}).then(function(){backupDone();flash('バックアップを保存しました')},
+      function(e){flash(e&&e.code==='declined'?'バックアップを保存しませんでした':'ここではバックアップを保存できません')});
+    return;
+  }
+  if(inViewer)return;
+  try{
+    var u=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');
+    a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(u)},10000);
+    backupDone();if(manual)flash('バックアップを保存しました');
+  }catch(e){flash('バックアップを保存できませんでした')}
+}
+$('bk').onclick=function(){doBackup(true)};
+setInterval(function(){if(!inViewer&&backupDue())doBackup(false);else updBk()},30000);
+if(inViewer){try{window.claude.use('downloads').then(function(d){dl=d;updBk()},function(){})}catch(e){}}
+$('rfile').onchange=function(){
+  var f=this.files&&this.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    var o=null;try{o=JSON.parse(r.result)}catch(e){}
+    if(!valid(o)){msg('このファイルからは復元できません。soba-backup で始まるファイルを選んでください。');return}
+    o.rev=S.rev;S=migrate(o);save();renderMenu();render();msg('ファイルから復元しました。');
+  };
+  r.readAsText(f);this.value='';
+};
+
+loadLocal();render();openDb();
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+})();
+</script>
+
+</html>
