@@ -1,1 +1,199 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#23407a">
+<title>そば屋台レジの記録</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+/* Layout: 上から 集計 → 品目別 → 注文一覧 → 取消・修正の記録。読むためのページ */
+:root{
+  --bg:#e9edf1; --panel:#f8fafb; --line:#c3ccd6; --ink:#17212c; --muted:#59677a;
+  --accent:#23407a; --cash:#1f6b4f; --wesmo:#6a3d8f; --warn:#b42318; --hot:#fff0c2;
+  --font:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic UI","Noto Sans CJK JP",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#10161d; --panel:#18212b; --line:#3a4858; --ink:#edf1f5; --muted:#a3b0bf;
+  --accent:#8fb0f2; --cash:#62c79f; --wesmo:#c6a0e8; --warn:#ff9b8f; --hot:#4a3a10; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--font);font-variant-numeric:tabular-nums;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(32px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+main{max-width:960px;margin:auto;display:flex;flex-direction:column;gap:24px}
+h1{font-size:22px;margin:0}
+h2{font-size:17px;margin:0 0 8px}
+a{color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.src{color:var(--muted);font-size:13px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;min-width:0}
+.tile span{display:block;font-size:13px;color:var(--muted)}
+.tile b{display:block;font-size:24px;overflow-wrap:anywhere}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.cols>*{min-width:0}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}
+th,td{border-bottom:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{font-size:13px;font-weight:400;color:var(--muted);white-space:nowrap}
+td.r,th.r{text-align:right;white-space:nowrap}
+td.t{white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:0 8px;border:1px solid currentColor;white-space:nowrap}
+.ok{color:var(--cash)} .void{color:var(--warn)} .part{color:var(--accent)}
+tr.voided td{color:var(--muted);text-decoration:line-through}
+tr.voided td:last-child{text-decoration:none}
+.empty{color:var(--muted);text-align:center}
+.note{color:var(--muted);font-size:13px;margin:6px 0 0}
+#msg{color:var(--warn);font-weight:700}
+</style>
+</head><body>
+<main>
+  <div class="bar">
+    <div><h1>そば屋台レジの記録</h1><div class="src" id="src">読み込み中です</div></div>
+    <div class="btns">
+      <label class="btn">バックアップファイルを開く<input type="file" id="file" accept=".json,application/json" hidden></label>
+      <button class="btn" id="local" hidden>この端末のデータに戻す</button>
+      <a class="btn" href="../">レジに戻る</a>
+    </div>
+  </div>
+  <p id="msg" hidden></p>
 
+  <section><h2>集計</h2><div class="tiles" id="tiles"></div>
+    <p class="note">売上は取消・修正を反映した金額です。</p></section>
+
+  <section class="cols">
+    <div><h2>品目別</h2><div class="scroll"><table><thead><tr><th>品目</th><th class="r">数</th><th class="r">金額</th></tr></thead><tbody id="items"></tbody></table></div></div>
+    <div><h2>割引券(経路別)</h2><div class="scroll"><table><thead><tr><th>券</th><th class="r">枚数</th><th class="r">割引額</th></tr></thead><tbody id="coupons"></tbody></table></div></div>
+  </section>
+
+  <section><h2>時間帯別</h2><div class="scroll"><table><thead><tr id="hoursH"></tr></thead><tbody id="hours"></tbody></table></div></section>
+
+  <section><h2>注文一覧</h2><div class="scroll"><table><thead><tr><th>番号</th><th>時刻</th><th>内容</th><th class="r">金額</th><th>支払い</th><th>状態</th></tr></thead><tbody id="orders"></tbody></table></div></section>
+
+  <section><h2>取消の記録</h2><div class="scroll"><table><thead><tr><th>時刻</th><th>番号</th><th>種別</th><th>内容</th><th class="r">返金額</th></tr></thead><tbody id="cancels"></tbody></table></div></section>
+
+  <section><h2>修正の記録</h2><div class="scroll"><table><thead><tr><th>時刻</th><th>番号</th><th>修正前</th><th>修正後</th></tr></thead><tbody id="edits"></tbody></table></div></section>
+</main>
+
+<script>
+(function(){
+'use strict';
+var KEY='soba-register-v1',S=null;
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function yen(n){return '¥'+Number(n||0).toLocaleString('ja-JP')}
+function valid(o){return o&&Array.isArray(o.orders)&&Array.isArray(o.lines)&&Array.isArray(o.menu)&&Array.isArray(o.extras)}
+var multiDay=false;
+function when(iso){
+  var d=new Date(iso),p=function(n){return String(n).padStart(2,'0')};
+  return (multiDay?(d.getMonth()+1)+'/'+d.getDate()+' ':'')+p(d.getHours())+':'+p(d.getMinutes());
+}
+
+/* レジ本体と同じ計算 */
+function isMenu(id){return S.menu.some(function(m){return m.id===id})}
+function lprice(l){if(typeof l.price==='number')return l.price;var m=S.menu.filter(function(x){return x.id===l.item})[0];return m?m.price:0}
+function allCancelled(o){return o.items.some(function(i){return isMenu(i.id)})&&!S.lines.some(function(l){return l.no===o.no&&!l.cancel})}
+function cancelInfo(no){var n=0,y=0;S.lines.forEach(function(l){if(l.cancel&&l.no===no){n++;y+=lprice(l)}});return{n:n,y:y}}
+function net(o){return o.voided||allCancelled(o)?0:Math.max(0,o.total-cancelInfo(o.no).y)}
+function effQty(o,id){
+  if(o.voided||allCancelled(o))return 0;
+  var it=o.items.filter(function(i){return i.id===id})[0],q=it?it.qty:0;
+  S.lines.forEach(function(l){if(l.no===o.no&&l.item===id&&l.cancel)q--});
+  return Math.max(0,q);
+}
+function edits(no){return (S.edits||[]).filter(function(e){return e.no===no}).length}
+
+function render(label){
+  $('src').textContent=label;
+  var days={};S.orders.forEach(function(o){days[new Date(o.at).toDateString()]=1});multiDay=Object.keys(days).length>1;
+  var live=S.orders.filter(function(o){return !o.voided}),sum=function(f){return live.reduce(function(a,o){return a+f(o)},0)};
+  var soba=S.lines.filter(function(l){return !l.cancel}).length;
+  var tiles=[['売上合計',yen(sum(net))],['現金',yen(sum(function(o){return o.pay==='現金'?net(o):0}))],['Wesmo',yen(sum(function(o){return o.pay==='Wesmo'?net(o):0}))],
+    ['そば販売数',soba+'杯'],['注文数',live.filter(function(o){return net(o)>0||!allCancelled(o)}).length+'件'],['取消',(S.cancels||[]).length+'件']];
+  $('tiles').innerHTML=tiles.map(function(t){return '<div class="tile"><span>'+t[0]+'</span><b>'+t[1]+'</b></div>'}).join('');
+
+  function rowsFor(list,emptyMsg,sign){
+    var any=false,h=list.map(function(m){
+      var q=0,y=0;S.orders.forEach(function(o){var e=effQty(o,m.id);if(!e)return;var it=o.items.filter(function(i){return i.id===m.id})[0];q+=e;y+=e*(it?it.price:m.price)});
+      if(q)any=true;
+      return '<tr><td>'+esc(m.name)+'</td><td class="r">'+q+'</td><td class="r">'+(sign<0&&y?'−':'')+yen(y)+'</td></tr>';
+    }).join('');
+    return any?h:'<tr><td class="empty" colspan="3">'+emptyMsg+'</td></tr>';
+  }
+  $('items').innerHTML=rowsFor(S.menu,'まだ売れていません',1);
+  $('coupons').innerHTML=rowsFor(S.extras,'割引券はまだ使われていません',-1);
+
+  /* 時間帯別: そばをメニューごとに分けて数える */
+  var hrs={};
+  S.orders.forEach(function(o){
+    if(o.voided)return;var d=new Date(o.at),k=(multiDay?(d.getMonth()+1)+'/'+d.getDate()+' ':'')+d.getHours()+'時台';
+    var h=hrs[k]||(hrs[k]={n:0,s:0,y:0,by:{}});h.n++;h.y+=net(o);
+    S.lines.forEach(function(l){if(l.no===o.no&&!l.cancel){h.s++;h.by[l.item]=(h.by[l.item]||0)+1}});
+  });
+  var hk=Object.keys(hrs);
+  $('hoursH').innerHTML='<th>時間</th><th class="r">注文</th>'+S.menu.map(function(m){return '<th class="r">'+esc(m.name)+'</th>'}).join('')+'<th class="r">そば計</th><th class="r">売上</th>';
+  $('hours').innerHTML=hk.length?hk.map(function(k){var h=hrs[k];
+    return '<tr><td class="t">'+k+'</td><td class="r">'+h.n+'</td>'+S.menu.map(function(m){return '<td class="r">'+(h.by[m.id]||0)+'</td>'}).join('')+
+      '<td class="r"><b>'+h.s+'</b></td><td class="r">'+yen(h.y)+'</td></tr>'}).join('')
+    :'<tr><td class="empty" colspan="'+(S.menu.length+4)+'">まだ注文はありません</td></tr>';
+
+  var ord=S.orders.slice().reverse();
+  $('orders').innerHTML=ord.length?ord.map(function(o){
+    var ci=cancelInfo(o.no),ec=edits(o.no),st;
+    if(o.voided)st='<span class="pill void">取消</span>';
+    else if(allCancelled(o))st='<span class="pill void">全品取消</span>';
+    else if(ci.n)st='<span class="pill part">'+ci.n+'品取消</span>';
+    else st='<span class="pill ok">有効</span>';
+    if(ec)st+=' <span class="pill part">修正'+ec+'回</span>';
+    var what=o.items.map(function(i){return esc(i.name)+'×'+i.qty}).join('、')||'品なし';
+    return '<tr class="'+(o.voided?'voided':'')+'"><td>'+o.no+'</td><td class="t">'+when(o.at)+'</td><td>'+what+'</td><td class="r">'+yen(net(o))+'</td><td>'+esc(o.pay)+'</td><td>'+st+'</td></tr>'}).join('')
+    :'<tr><td class="empty" colspan="6">まだ注文はありません</td></tr>';
+
+  var cl=(S.cancels||[]).slice().reverse();
+  $('cancels').innerHTML=cl.length?cl.map(function(e){
+    return '<tr><td class="t">'+when(e.at)+'</td><td>'+e.no+(e.sub?'-'+e.sub:'')+'</td><td>'+esc(e.kind)+'</td><td>'+esc(e.name)+'</td><td class="r">'+yen(e.amount)+'</td></tr>'}).join('')
+    :'<tr><td class="empty" colspan="5">取り消した注文はありません</td></tr>';
+
+  var el=(S.edits||[]).slice().reverse();
+  $('edits').innerHTML=el.length?el.map(function(e){
+    return '<tr><td class="t">'+when(e.at)+'</td><td>'+e.no+'</td><td>'+esc(e.before)+'</td><td>'+esc(e.after)+'</td></tr>'}).join('')
+    :'<tr><td class="empty" colspan="4">修正した注文はありません</td></tr>';
+}
+
+function msg(t){$('msg').hidden=!t;$('msg').textContent=t||''}
+function fromIdb(cb){
+  try{
+    var q=indexedDB.open('soba-register',1);
+    q.onupgradeneeded=function(){q.result.createObjectStore('kv')};
+    q.onsuccess=function(){
+      try{var g=q.result.transaction('kv').objectStore('kv').get(KEY);
+        g.onsuccess=function(){var o=null;try{o=g.result?JSON.parse(g.result):null}catch(e){}cb(o)};
+        g.onerror=function(){cb(null)};
+      }catch(e){cb(null)}
+    };
+    q.onerror=function(){cb(null)};
+  }catch(e){cb(null)}
+}
+function loadLocal(){
+  msg('');$('local').hidden=true;
+  var o=null;try{o=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+  fromIdb(function(d){
+    if(valid(d)&&(!valid(o)||(d.rev||0)>(o.rev||0)))o=d;
+    if(valid(o)){S=o;render('この端末のデータ')}
+    else{S={orders:[],lines:[],menu:[],extras:[],cancels:[],edits:[]};render('この端末にはまだ記録がありません。バックアップファイルを開くこともできます。')}
+  });
+}
+$('file').onchange=function(){
+  var f=this.files&&this.files[0];if(!f)return;var r=new FileReader();
+  r.onload=function(){
+    var o=null;try{o=JSON.parse(r.result)}catch(e){}
+    if(!valid(o)){msg('このファイルは読めません。soba-backup で始まるファイルを選んでください。');return}
+    msg('');S=o;render('ファイル: '+f.name);$('local').hidden=false;
+  };
+  r.readAsText(f);this.value='';
+};
+$('local').onclick=loadLocal;
+loadLocal();
+})();
+</script>
+</body></html>
