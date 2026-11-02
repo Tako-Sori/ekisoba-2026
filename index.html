@@ -219,12 +219,12 @@ textarea{width:100%;height:130px;border:1px solid var(--line);border-radius:6px;
 var KEY='soba-register-v1', TOPS=['ハイカラ','きつね','からあげ','たこやき'], STOCK_KEYS=['そば計'].concat(TOPS);
 function initial(){return{rev:0,nextNo:1,
   menu:[
-    {id:'kake',name:'かけ',price:300,soba:true,tops:[]},
-    {id:'kitsune',name:'きつね',price:400,soba:true,tops:['きつね']},
-    {id:'haikara',name:'ハイカラ',price:350,soba:true,tops:['ハイカラ']},
-    {id:'karaage',name:'からあげ',price:250,soba:true,tops:['からあげ']},
-    {id:'takoyaki',name:'たこやき',price:300,soba:true,tops:['たこやき']},
-    {id:'zenbu',name:'全部',price:700,soba:true,tops:TOPS.slice()}],
+    {id:'kake',name:'かけ',price:400,soba:true,tops:[]},
+    {id:'kitsune',name:'きつね',price:500,soba:true,tops:['きつね']},
+    {id:'haikara',name:'ハイカラ',price:500,soba:true,tops:['ハイカラ']},
+    {id:'karaage',name:'からあげ',price:600,soba:true,tops:['からあげ']},
+    {id:'takoyaki',name:'たこやき',price:600,soba:true,tops:['たこやき']},
+    {id:'zenbu',name:'全部',price:1000,soba:true,tops:TOPS.slice()}],
   extras:[{id:'a',name:'A',price:100},{id:'b',name:'B',price:100},{id:'c',name:'C',price:100},{id:'d',name:'D',price:100}],
   priced:false,stock:{'そば計':100,'ハイカラ':50,'きつね':50,'からあげ':50,'たこやき':50},
   cart:{},orders:[],lines:[],cancels:[],edits:[]};}
@@ -247,6 +247,8 @@ function migrate(o){
     var d=initial(),p={};d.menu.concat(d.extras).forEach(function(m){p[m.id]=m.price});
     o.menu.concat(o.extras).forEach(function(m){m.price=p[m.id]||0});
   }
+  /* 価格を設定画面で一度も変えていない端末は、新しい既定価格に合わせる */
+  if(!o.priced){var dp={};initial().menu.forEach(function(m){dp[m.id]=m.price});o.menu.forEach(function(m){if(typeof dp[m.id]==='number')m.price=dp[m.id]})}
   if(!Array.isArray(o.cancels))o.cancels=[];
   if(!Array.isArray(o.edits))o.edits=[];
   delete o.kanpa;o.orders.forEach(function(x){delete x.kanpa});
